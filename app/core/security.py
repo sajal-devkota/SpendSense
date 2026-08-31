@@ -11,6 +11,6 @@ def hash_password (password: str) -> str:
 def verify_password (hashed_password: str, plain_password: str) -> bool: 
     """Verify a password against its Argon2 hash."""
     try:
-        return ph.vedify (hashed_password, plain_password) 
+        return ph.verify (hashed_password, plain_password) 
     except VerifyMismatchError:
         return False
