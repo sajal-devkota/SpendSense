@@ -2,9 +2,7 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt 
 from fastapi import HTTPException, status
 
-SECRET_KEY = "change-me"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+from app.core.config import settings
 
 
 
@@ -15,14 +13,22 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode = data.copy()
 
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(
+        to_encode,
+        settings.secret_key.get_secret_value(),
+        algorithm=settings.algorithm,
+    )
 
 def verify_access_token(token:str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            settings.secret_key.get_secret_value(),
+            algorithms=[settings.algorithm],
+        )
         return payload
     except jwt.JWTError as exc:
         raise HTTPException(
@@ -30,17 +36,3 @@ def verify_access_token(token:str):
             detail="invalid token"
         ) from exc
 
-
-
-
-
-
-
-if __name__ == "__main__":
-    print("This is main module", __name__)
-    token = create_access_token({"name":"abc"})
-
-    payload = verify_access_token(token)
-    print("token verified successfully")
-    print(payload)
-    print(token)
