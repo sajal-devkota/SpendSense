@@ -1,42 +1,41 @@
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError
 from sqlalchemy.orm import Session
+
 from app.core.db import get_db
+from app.core.jwt_helper import verify_access_token
+from app.models.user import User
 
-security_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+# read the bearer token from the Authorization header
+security_scheme = HTTPBearer(auto_error=False)
 
-def get_current_user(request: Request, token:str = Depends(security_scheme), db:Session=Depends(get_db)):
-    from app.core.jwt_helper import verify_access_token
-    from app.models.user import User
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing authentication token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise unauthorized
 
     try:
-        payload = verify_access_token(token=token)
-        user_id = payload.get('user_id')
-        email = payload.get("email")
+        payload = verify_access_token(credentials.credentials)
+    except (JWTError, HTTPException):
+        raise unauthorized
 
-        if user_id is None:
-            raise HTTPException(
-                detail="Invalid token",
-                status_code=401
-            )
+    user_id = payload.get("user_id")
+    if user_id is None:
+        raise unauthorized
 
-        user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise unauthorized
 
-        if user is None:
-                    raise HTTPException(
-                        detail="Invalid token",
-                        status_code=401
-                    )
-
-        request.state.user=user
-                
-        
-    except Exception as e:
-        print("Error in getting user", e)
-        raise HTTPException(
-            detail="invalid token",
-            status_code=401
-                            )
+    return user
     
-
 
