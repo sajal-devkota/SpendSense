@@ -3,4 +3,5 @@ sqlalchemy
 python-jose[cryptography]
 argon2-cffi
 pydantic-settings
+alembic
 pytest
