@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 import app.models.expense
 import app.models.user
+import app.models.budget
 from app.core.config import settings
 from app.core.db import Base
 
