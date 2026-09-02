@@ -8,8 +8,20 @@ A personal finance application built with FastAPI, SQL, and Python.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item .env.example .env
 fastapi dev app/main.py
 ```
+
+Before starting the API, open `.env` and replace `SECRET_KEY` with a random
+value. Generate one with:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Keep `.env` private. Never commit it to Git.
+The local `expense.db` file is also ignored so test and user data are not
+published to GitHub.
 
 Open `http://127.0.0.1:8000/docs` for the interactive API documentation.
 
