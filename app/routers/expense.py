@@ -16,13 +16,13 @@ from app.models.user import User
 expense_router = APIRouter(
     prefix="/expenses",
     tags=["Expenses"],
+    dependencies=[Depends(get_current_user)],
 )
 
 # create expense
 
 @expense_router.post("/", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
-def create_expense(expense_request_dto: ExpenseRequestDto, db: Session = Depends(get_db),
-                   user:User = Depends(get_current_user)):
+def create_expense(expense_request_dto: ExpenseRequestDto, db: Session = Depends(get_db)):
     new_expense = Expense(
         title= expense_request_dto.title,
         description = expense_request_dto.description,
@@ -53,18 +53,27 @@ def get_all_expenses(db: Session = Depends(get_db)):
 
 
 
+# keep this above /{expense_id} or "search" is treated as an id
+@expense_router.get("/search/", response_model=ApiResponse)
+def search_expense(title: str, db: Session = Depends(get_db)):
+    expenses = db.query(Expense).filter(Expense.title.ilike(f"%{title}%")).all()
+    return ApiResponse(
+        status="success",
+        message="Expenses retrieved successfully",
+        data={"expenses": [ExpenseResponseDto.model_validate(expense) for expense in expenses]},
+    )
+
+
 # get expense by id
 @expense_router.get("/{expense_id}", response_model=ApiResponse)
 def get_expense_by_id(expense_id: int, db: Session = Depends(get_db)):
-
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
     return ApiResponse(
         status="success",
-        message="Expense retrived successfully",
-        data = {"expense" : ExpenseResponseDto.model_validate(expense)}
-
+        message="Expense retrieved successfully",
+        data={"expense": ExpenseResponseDto.model_validate(expense)},
     )
 
 
@@ -98,7 +107,7 @@ def update_expense_by_id(expense_id: int, expense_request_dto:ExpenseRequestDto,
 def delete_expense(expense_id: int, db: Session = Depends(get_db)):
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
-        raise HTTPException(status_code= status.HTTP_304_NOT_MODIFIED, detail = "Expense not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
 
     db.delete(expense)
     db.commit()
@@ -107,23 +116,3 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db)):
         status="success",
         message="Expense deleted successfully"
     )
-
-
-
-#search expense by title
-
-@expense_router.get("/search/", response_model=ApiResponse)
-def search_expense(title:str, db: Session = Depends(get_db)):
-    expenses = db.query(Expense).filter(Expense.title.ilike(f"%{title}")).all()
-    return ApiResponse(
-        status="success",
-        message="Expenses retrieved successfully",
-        data = {"expenses": [ExpenseResponseDto.model_validate(expense) for expense in expenses]}
-    )
-
-
-
-
-
-
-
