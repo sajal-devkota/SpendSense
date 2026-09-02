@@ -5,6 +5,9 @@ from app.core.db import get_db
 from app.models.expense import Expense
 from app.schemas.expense import ExpenseResponseDto, ExpenseRequestDto
 from app.schemas.api_response import ApiResponse
+from app.core.secure import get_current_user
+from app.models.user import User
+
 
 
 
@@ -18,7 +21,8 @@ expense_router = APIRouter(
 # create expense
 
 @expense_router.post("/", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
-def create_expense(expense_request_dto: ExpenseRequestDto, db: Session = Depends(get_db)):
+def create_expense(expense_request_dto: ExpenseRequestDto, db: Session = Depends(get_db),
+                   user:User = Depends(get_current_user)):
     new_expense = Expense(
         title= expense_request_dto.title,
         description = expense_request_dto.description,
@@ -55,7 +59,7 @@ def get_expense_by_id(expense_id: int, db: Session = Depends(get_db)):
 
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Expense not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
     return ApiResponse(
         status="success",
         message="Expense retrived successfully",
@@ -71,7 +75,7 @@ def get_expense_by_id(expense_id: int, db: Session = Depends(get_db)):
 def update_expense_by_id(expense_id: int, expense_request_dto:ExpenseRequestDto, db: Session = Depends(get_db)):
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Expense not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
 
     expense.title = expense_request_dto.title
     expense.description = expense_request_dto.description
@@ -86,10 +90,6 @@ def update_expense_by_id(expense_id: int, expense_request_dto:ExpenseRequestDto,
         message = "Expense updated successfully",
         data = {"expense" : ExpenseResponseDto.model_validate(expense)}
     )
-
-
-
-
 
 
 
