@@ -1,10 +1,14 @@
 from app.core.db import Base
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 class Expense(Base):
     __tablename__ = "expenses"
+    __table_args__ = (
+        UniqueConstraint("user_id", "import_hash", name="uq_expense_user_import_hash"),
+    )
+
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title=Column(String(50),nullable=False)
@@ -12,6 +16,7 @@ class Expense(Base):
     category=Column(String(50), nullable=False, default="other")
     show= Column(Boolean, default=True)
     amount=Column(Numeric(12, 2), nullable=False)
+    import_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     owner = relationship("User", back_populates="expenses")
 
