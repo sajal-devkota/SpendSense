@@ -6,6 +6,8 @@ from app.models.user import User
 from app.schemas.api_response import ApiResponse
 from app.schemas.user import UserRequestDto, UserUpdateDto, UserResponseDto
 from app.core.security import hash_password
+from app.core.secure import get_current_user
+
 
 user_router = APIRouter(
     prefix="/users", tags=["users"],)
@@ -14,9 +16,6 @@ user_router = APIRouter(
 # create user
 
 @user_router.post("/", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
-
-# check if username already exists
-
 def create_user(user_request: UserRequestDto, db: Session = Depends(get_db)):
     existing_username = db.query(User).filter(User.username == user_request.username).first()
     if existing_username:
@@ -25,17 +24,12 @@ def create_user(user_request: UserRequestDto, db: Session = Depends(get_db)):
             detail="Username already registered"
         )
 
-    # Check if email already exists
-
     existing_email = db.query(User).filter(User.email == user_request.email).first()
-
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-
-    # Hash the password
 
     hashed_pwd = hash_password(user_request.password)
 
@@ -55,28 +49,10 @@ def create_user(user_request: UserRequestDto, db: Session = Depends(get_db)):
     )
 
 
-# get all users
+# get logged-in user
 
-@user_router.get("/", response_model=ApiResponse)
-def get_all_users(db: Session = Depends(get_db)):
-    users = db.query(User).all()
-    return ApiResponse(
-        status="success",
-        message="Users retrieved successfully",
-        data={"users": [UserResponseDto.model_validate(u) for u in users]}
-    )
-
-
-# get user by id
-
-@user_router.get("/{user_id}", response_model=ApiResponse)
-def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+@user_router.get("/me", response_model=ApiResponse)
+def get_current_user_profile(user: User = Depends(get_current_user)):
     return ApiResponse(
         status="success",
         message="User retrieved successfully",
@@ -84,17 +60,11 @@ def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
     )
 
 
-# update user
+# update logged-in user
 
-@user_router.put("/{user_id}", response_model=ApiResponse)
-def update_user(user_id: int, user_update: UserUpdateDto, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
+@user_router.put("/me", response_model=ApiResponse)
+def update_current_user(user_update: UserUpdateDto, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
     if user_update.username and user_update.username != user.username:
         conflict = db.query(User).filter(User.username == user_update.username).first()
         if conflict:
@@ -125,18 +95,13 @@ def update_user(user_id: int, user_update: UserUpdateDto, db: Session = Depends(
         data={"user": UserResponseDto.model_validate(user)}
     )
 
-# delete user
 
-@user_router.delete("/{user_id}", response_model=ApiResponse)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+# delete logged-in user
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
+@user_router.delete("/me", response_model=ApiResponse)
+def delete_current_user(db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    user_id = user.id
     db.delete(user)
     db.commit()
 

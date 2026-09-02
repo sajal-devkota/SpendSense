@@ -9,6 +9,7 @@ class ExpenseRequestDto(BaseModel):
 
 class ExpenseResponseDto(BaseModel):
     id:int = Field(..., description="The ID of the expense")
+    user_id: int = Field(..., description="The ID of the user who owns the expense")
     title: str = Field(..., description="The title of the expense", min_length=1, max_length = 100)
     amount:float= Field(..., description="The amount of the expense")
     description:str = Field(..., description="description of expense", min_length=1, max_length = 100)

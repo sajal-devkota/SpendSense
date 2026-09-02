@@ -1,6 +1,7 @@
 from app.core.db import Base
-from datetime import datetime
-from sqlalchemy import Boolean, Column, Integer, String, Float, Date, DateTime
+from datetime import datetime, timezone
+from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
 
 class User(Base):
     __tablename__ = "users"
@@ -8,4 +9,5 @@ class User(Base):
     username=Column(String(50), unique=True, nullable=False)
     email= Column(String(100), unique=True, nullable=False)
     password= Column(String(100), nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expenses = relationship("Expense", back_populates="owner", cascade="all, delete-orphan")
