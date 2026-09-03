@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -7,6 +7,7 @@ from app.schemas.expense import ExpenseResponseDto, ExpenseRequestDto
 from app.schemas.api_response import ApiResponse
 from app.core.secure import get_current_user
 from app.models.user import User
+from app.services.csv_import import MAX_CSV_SIZE, prepare_expense, read_csv
 
 
 expense_router = APIRouter(
@@ -50,6 +51,90 @@ def get_all_expenses(db: Session = Depends(get_db),
         status="success",
         message="Expenses retrieved successfully",
         data={"expenses": [ExpenseResponseDto.model_validate(expense) for expense in expenses]}
+    )
+
+
+# import expenses from a CSV file
+# keep this above /{expense_id} or "import" is treated as an id
+
+@expense_router.post("/import/", response_model=ApiResponse)
+async def import_expenses(
+    file: UploadFile = File(
+        ...,
+        description=(
+            "Required columns: date, title, amount. "
+            "Optional columns: description, category, transaction_id."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    content = await file.read(MAX_CSV_SIZE + 1)
+    if len(content) > MAX_CSV_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="CSV file must be 2 MB or smaller"
+        )
+
+    try:
+        csv_rows = read_csv(content)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc)
+        ) from exc
+
+    prepared_rows = []
+    errors = []
+    duplicate_count = 0
+    hashes_in_file = set()
+
+    for row_number, row in csv_rows:
+        try:
+            expense_data = prepare_expense(row)
+        except ValueError as exc:
+            errors.append({"row": row_number, "message": str(exc)})
+            continue
+
+        import_hash = expense_data["import_hash"]
+        if import_hash in hashes_in_file:
+            duplicate_count += 1
+            continue
+        hashes_in_file.add(import_hash)
+        prepared_rows.append(expense_data)
+
+    existing_hashes = set()
+    if hashes_in_file:
+        existing_hashes = {
+            value for (value,) in db.query(Expense.import_hash).filter(
+                Expense.user_id == user.id,
+                Expense.import_hash.in_(hashes_in_file)
+            ).all()
+        }
+
+    new_expenses = []
+    for expense_data in prepared_rows:
+        if expense_data["import_hash"] in existing_hashes:
+            duplicate_count += 1
+            continue
+        expense = Expense(user_id=user.id, **expense_data)
+        db.add(expense)
+        new_expenses.append(expense)
+
+    db.commit()
+    for expense in new_expenses:
+        db.refresh(expense)
+
+    return ApiResponse(
+        status="success",
+        message="CSV import completed",
+        data={
+            "imported": len(new_expenses),
+            "duplicates": duplicate_count,
+            "failed": len(errors),
+            "errors": errors,
+            "expenses": [ExpenseResponseDto.model_validate(expense) for expense in new_expenses]
+        }
     )
 
 
