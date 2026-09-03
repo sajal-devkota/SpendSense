@@ -25,6 +25,7 @@ def create_expense(expense_request_dto: ExpenseRequestDto, db: Session = Depends
         title=expense_request_dto.title,
         description=expense_request_dto.description,
         amount=expense_request_dto.amount,
+        category=expense_request_dto.category,
         show=expense_request_dto.show
     )
     db.add(new_expense)
@@ -113,6 +114,7 @@ def update_expense_by_id(expense_id: int, expense_request_dto: ExpenseRequestDto
     expense.title = expense_request_dto.title
     expense.description = expense_request_dto.description
     expense.amount = expense_request_dto.amount
+    expense.category = expense_request_dto.category
     expense.show = expense_request_dto.show
 
     db.commit()

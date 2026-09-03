@@ -11,3 +11,4 @@ class User(Base):
     password= Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     expenses = relationship("Expense", back_populates="owner", cascade="all, delete-orphan")
+    budgets = relationship("Budget", back_populates="owner", cascade="all, delete-orphan")

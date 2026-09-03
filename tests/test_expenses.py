@@ -113,3 +113,24 @@ def test_expense_id_must_be_an_integer(client, first_user_headers):
     response = client.get("/expenses/not-an-id", headers=first_user_headers)
 
     assert response.status_code == 422
+
+
+def test_expense_amount_must_be_positive(client, first_user_headers):
+    response = client.post(
+        "/expenses/",
+        headers=first_user_headers,
+        json=expense_body() | {"amount": 0},
+    )
+
+    assert response.status_code == 422
+
+
+def test_expense_category_is_normalized(client, first_user_headers):
+    response = client.post(
+        "/expenses/",
+        headers=first_user_headers,
+        json=expense_body() | {"category": "  Food  "},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["expense"]["category"] == "food"
