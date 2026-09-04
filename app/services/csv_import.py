@@ -39,6 +39,8 @@ def read_csv(content: bytes) -> list[tuple[int, dict[str, str]]]:
 
         rows = []
         for row_number, original_row in enumerate(reader, start=2):
+            if None in original_row:
+                raise ValueError(f"Row {row_number} has more values than columns")
             row = {
                 str(key).strip().lower(): (value or "").strip()
                 for key, value in original_row.items()

@@ -184,6 +184,17 @@ def test_malformed_csv_returns_422_instead_of_server_error(client, first_user_he
     assert response.json()["detail"] == "CSV file could not be read"
 
 
+def test_csv_with_more_values_than_headers_returns_422(client, first_user_headers):
+    response = client.post(
+        "/expenses/import/",
+        headers=first_user_headers,
+        files=csv_file("date,title,amount\n2026-09-01,Lunch,12.00,unexpected\n"),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Row 2 has more values than columns"
+
+
 def test_file_larger_than_two_mb_is_rejected(client, first_user_headers):
     response = client.post(
         "/expenses/import/",
