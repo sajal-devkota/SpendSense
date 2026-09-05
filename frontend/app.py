@@ -1,4 +1,5 @@
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 from frontend.api_client import (
@@ -281,6 +282,63 @@ def show_csv_import(token: str) -> None:
             st.write(f"Row {error['row']}: {error['message']}")
 
 
+def show_spending_summary(expenses: list[dict]) -> None:
+    chart_data = pd.DataFrame(expenses)
+    chart_data["amount"] = pd.to_numeric(chart_data["amount"], errors="coerce")
+    chart_data["created_at"] = pd.to_datetime(
+        chart_data["created_at"],
+        format="ISO8601",
+        errors="coerce",
+    )
+    chart_data = chart_data.dropna(subset=["amount"])
+
+    st.subheader("Spending overview")
+    total = chart_data["amount"].sum()
+    count = len(chart_data)
+    average = total / count if count else 0
+
+    total_column, count_column, average_column = st.columns(3)
+    total_column.metric("Total spending", f"{total:,.2f}")
+    count_column.metric("Expenses", count)
+    average_column.metric("Average expense", f"{average:,.2f}")
+
+    category_totals = (
+        chart_data.groupby("category", as_index=False)["amount"]
+        .sum()
+        .sort_values("amount", ascending=False)
+    )
+    category_totals["category"] = category_totals["category"].str.title()
+
+    category_chart = px.bar(
+        category_totals,
+        x="category",
+        y="amount",
+        labels={"category": "Category", "amount": "Amount"},
+        title="Spending by category",
+    )
+    category_chart.update_layout(showlegend=False)
+
+    dated_expenses = chart_data.dropna(subset=["created_at"]).copy()
+    dated_expenses["month"] = dated_expenses["created_at"].dt.strftime("%Y-%m")
+    monthly_totals = dated_expenses.groupby("month", as_index=False)["amount"].sum()
+
+    monthly_chart = px.line(
+        monthly_totals,
+        x="month",
+        y="amount",
+        markers=True,
+        labels={"month": "Month", "amount": "Amount"},
+        title="Monthly spending",
+    )
+
+    category_column, monthly_column = st.columns(2)
+    category_column.plotly_chart(category_chart, width="stretch")
+    if monthly_totals.empty:
+        monthly_column.info("No dated expenses found.")
+    else:
+        monthly_column.plotly_chart(monthly_chart, width="stretch")
+
+
 def show_expenses(token: str) -> None:
     st.subheader("Your expenses")
 
@@ -293,6 +351,8 @@ def show_expenses(token: str) -> None:
     if not expenses:
         st.info("No expenses found.")
         return
+
+    show_spending_summary(expenses)
 
     table = pd.DataFrame(expenses)
     table = table[["title", "amount", "category", "description", "created_at"]]
