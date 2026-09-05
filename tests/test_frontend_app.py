@@ -21,6 +21,7 @@ def test_login_stores_the_token_and_logout_clears_it(monkeypatch):
     )
     monkeypatch.setattr(api_client, "get_current_user", lambda token: user)
     monkeypatch.setattr(api_client, "get_expenses", lambda token: [])
+    monkeypatch.setattr(api_client, "get_budgets", lambda token, month: [])
 
     app = load_app()
     app.text_input[0].input("first@example.com")
@@ -79,3 +80,46 @@ def test_expired_token_returns_the_user_to_login(monkeypatch):
     assert app.session_state["user"] is None
     assert app.info[0].value == "Your session expired. Please log in again."
     assert [tab.label for tab in app.tabs] == ["Log in", "Register"]
+
+
+def test_duplicate_budget_error_does_not_hide_existing_budgets(monkeypatch):
+    user = {"id": 1, "username": "first-user", "email": "first@example.com"}
+    budget = {
+        "id": 1,
+        "category": "food",
+        "month": "2026-09",
+        "limit_amount": 100.0,
+        "spent": 25.0,
+        "remaining": 75.0,
+        "percentage_used": 25.0,
+        "warning": None,
+    }
+    budget_requests = 0
+
+    def duplicate_budget(*args):
+        raise api_client.ApiClientError(
+            "Budget already exists for this category and month",
+            status_code=400,
+        )
+
+    def get_existing_budget(token, month):
+        nonlocal budget_requests
+        budget_requests += 1
+        return [budget]
+
+    monkeypatch.setattr(api_client, "get_current_user", lambda token: user)
+    monkeypatch.setattr(api_client, "get_expenses", lambda token: [])
+    monkeypatch.setattr(api_client, "create_budget", duplicate_budget)
+    monkeypatch.setattr(api_client, "get_budgets", get_existing_budget)
+
+    app = AppTest.from_file(str(APP_FILE))
+    app.session_state["access_token"] = "jwt-token"
+    app.session_state["user"] = user
+    app.run(timeout=10)
+
+    create_button = next(button for button in app.button if button.label == "Create budget")
+    create_button.click().run(timeout=10)
+
+    assert not list(app.exception)
+    assert budget_requests == 2
+    assert app.error[0].value == "Budget already exists for this category and month"

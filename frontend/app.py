@@ -1,16 +1,22 @@
+from datetime import date
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from frontend.api_client import (
     ApiClientError,
+    create_budget,
     create_expense,
+    delete_budget,
     delete_expense,
+    get_budgets,
     get_current_user,
     get_expenses,
     import_expenses,
     login_user,
     register_user,
+    update_budget,
     update_expense,
 )
 
@@ -25,6 +31,21 @@ EXPENSE_CATEGORIES = [
     "other",
 ]
 
+MONTH_NAMES = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+]
+
 
 st.set_page_config(
     page_title="SpendSense",
@@ -37,6 +58,7 @@ def initialize_session() -> None:
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("authentication_message", None)
     st.session_state.setdefault("expense_message", None)
+    st.session_state.setdefault("budget_message", None)
 
 
 def clear_session() -> None:
@@ -373,6 +395,127 @@ def show_expenses(token: str) -> None:
     show_expense_actions(token, expenses)
 
 
+def show_budget_progress(budgets: list[dict]) -> None:
+    if not budgets:
+        st.info("No budgets found for this month.")
+        return
+
+    for budget in budgets:
+        percentage_used = float(budget["percentage_used"])
+        progress_value = min(max(percentage_used / 100, 0.0), 1.0)
+
+        with st.container(border=True):
+            st.write(f"**{budget['category'].title()}**")
+            limit_column, spent_column, remaining_column = st.columns(3)
+            limit_column.metric("Limit", f"{budget['limit_amount']:,.2f}")
+            spent_column.metric("Spent", f"{budget['spent']:,.2f}")
+            remaining_column.metric("Remaining", f"{budget['remaining']:,.2f}")
+            st.progress(progress_value, text=f"{percentage_used:.0f}% used")
+
+            if budget["warning"]:
+                st.warning(budget["warning"])
+
+
+def show_budget_actions(token: str, budgets: list[dict]) -> None:
+    if not budgets:
+        return
+
+    st.subheader("Edit or delete budget")
+    budgets_by_id = {budget["id"]: budget for budget in budgets}
+    selected_id = st.selectbox(
+        "Select a budget",
+        list(budgets_by_id),
+        format_func=lambda budget_id: budgets_by_id[budget_id]["category"].title(),
+    )
+    selected = budgets_by_id[selected_id]
+
+    with st.form(f"edit_budget_{selected_id}"):
+        limit_amount = st.number_input(
+            "Budget limit",
+            min_value=0.01,
+            value=float(selected["limit_amount"]),
+            step=1.0,
+            format="%.2f",
+            key=f"budget_limit_{selected_id}",
+        )
+        update_submitted = st.form_submit_button("Update budget")
+
+    if update_submitted:
+        try:
+            update_budget(token, selected_id, limit_amount)
+        except ApiClientError as exc:
+            st.error(exc.message)
+            return
+
+        st.session_state.budget_message = "Budget updated."
+        st.rerun()
+
+    st.warning("Deleting a budget cannot be undone.")
+    if st.button("Delete budget", key=f"delete_budget_{selected_id}"):
+        try:
+            delete_budget(token, selected_id)
+        except ApiClientError as exc:
+            st.error(exc.message)
+            return
+
+        st.session_state.budget_message = "Budget deleted."
+        st.rerun()
+
+
+def show_budgets(token: str) -> None:
+    st.subheader("Monthly budgets")
+
+    today = date.today()
+    month_column, year_column = st.columns(2)
+    month_number = month_column.selectbox(
+        "Month",
+        range(1, 13),
+        index=today.month - 1,
+        format_func=lambda month: MONTH_NAMES[month - 1],
+    )
+    year = year_column.number_input(
+        "Year",
+        min_value=2000,
+        max_value=2100,
+        value=today.year,
+        step=1,
+    )
+    selected_month = f"{int(year):04d}-{month_number:02d}"
+
+    message = st.session_state.budget_message
+    if message:
+        st.success(message)
+        st.session_state.budget_message = None
+
+    with st.form("create_budget_form", clear_on_submit=True):
+        category = st.selectbox("Budget category", EXPENSE_CATEGORIES)
+        limit_amount = st.number_input(
+            "Limit amount",
+            min_value=0.01,
+            step=1.0,
+            format="%.2f",
+        )
+        create_submitted = st.form_submit_button("Create budget")
+
+    if create_submitted:
+        try:
+            create_budget(token, category, selected_month, limit_amount)
+        except ApiClientError as exc:
+            st.error(exc.message)
+        else:
+            st.session_state.budget_message = "Budget created."
+            st.rerun()
+
+    try:
+        budgets = get_budgets(token, selected_month)
+    except ApiClientError as exc:
+        st.error(exc.message)
+        return
+
+    show_budget_progress(budgets)
+    show_budget_actions(token, budgets)
+
+
 def show_authenticated_app() -> None:
     user = st.session_state.user
 
@@ -393,6 +536,7 @@ def show_authenticated_app() -> None:
     show_expense_form(st.session_state.access_token)
     show_csv_import(st.session_state.access_token)
     show_expenses(st.session_state.access_token)
+    show_budgets(st.session_state.access_token)
 
 
 initialize_session()

@@ -169,6 +169,47 @@ def delete_expense(token: str, expense_id: int) -> dict[str, Any]:
     return request("DELETE", f"/expenses/{expense_id}", token=token)
 
 
+def get_budgets(token: str, month: str) -> list[dict[str, Any]]:
+    response = request(
+        "GET",
+        "/budgets/",
+        token=token,
+        params={"month": month},
+    )
+    return response["data"]["budgets"]
+
+
+def create_budget(
+    token: str,
+    category: str,
+    month: str,
+    limit_amount: float,
+) -> dict[str, Any]:
+    return request(
+        "POST",
+        "/budgets/",
+        token=token,
+        json={
+            "category": category,
+            "month": month,
+            "limit_amount": limit_amount,
+        },
+    )
+
+
+def update_budget(token: str, budget_id: int, limit_amount: float) -> dict[str, Any]:
+    return request(
+        "PUT",
+        f"/budgets/{budget_id}",
+        token=token,
+        json={"limit_amount": limit_amount},
+    )
+
+
+def delete_budget(token: str, budget_id: int) -> dict[str, Any]:
+    return request("DELETE", f"/budgets/{budget_id}", token=token)
+
+
 def import_expenses(
     token: str,
     filename: str,
