@@ -198,4 +198,3 @@ def test_create_budget_sends_the_form_values(monkeypatch):
         "month": "2026-09",
         "limit_amount": 200.00,
     }
-

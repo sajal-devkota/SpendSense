@@ -54,20 +54,19 @@ st.set_page_config(
 
 
 def category_input(label: str, key: str, current: str | None = None) -> str:
+    categories = EXPENSE_CATEGORIES.copy()
+    if current and current not in categories:
+        categories.insert(0, current)
+
     selected = st.selectbox(
         label,
-        EXPENSE_CATEGORIES,
-        index=(
-            EXPENSE_CATEGORIES.index(current)
-            if current in EXPENSE_CATEGORIES
-            else EXPENSE_CATEGORIES.index("other")
-        ),
+        categories,
+        index=categories.index(current) if current else 0,
         format_func=str.title,
         key=f"{key}_choice",
     )
     custom = st.text_input(
         "Custom category (optional)",
-        value=current if current and current not in EXPENSE_CATEGORIES else "",
         max_chars=50,
         key=f"{key}_custom",
     )
@@ -685,4 +684,3 @@ if authenticated:
     show_authenticated_app()
 else:
     show_authentication()
-
