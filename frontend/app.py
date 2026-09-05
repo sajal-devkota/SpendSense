@@ -53,12 +53,34 @@ st.set_page_config(
 )
 
 
+def category_input(label: str, key: str, current: str | None = None) -> str:
+    selected = st.selectbox(
+        label,
+        EXPENSE_CATEGORIES,
+        index=(
+            EXPENSE_CATEGORIES.index(current)
+            if current in EXPENSE_CATEGORIES
+            else EXPENSE_CATEGORIES.index("other")
+        ),
+        format_func=str.title,
+        key=f"{key}_choice",
+    )
+    custom = st.text_input(
+        "Custom category (optional)",
+        value=current if current and current not in EXPENSE_CATEGORIES else "",
+        max_chars=50,
+        key=f"{key}_custom",
+    )
+    return custom.strip().lower() or selected
+
+
 def initialize_session() -> None:
     st.session_state.setdefault("access_token", None)
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("authentication_message", None)
     st.session_state.setdefault("expense_message", None)
     st.session_state.setdefault("budget_message", None)
+    st.session_state.setdefault("import_result", None)
 
 
 def clear_session() -> None:
@@ -163,11 +185,8 @@ def show_expense_form(token: str) -> None:
     with st.form("expense_form", clear_on_submit=True):
         title = st.text_input("Title")
         description = st.text_input("Description")
-        amount = st.number_input("Amount", min_value=0.01, step=0.01, format="%.2f")
-        category = st.selectbox(
-            "Category",
-            EXPENSE_CATEGORIES,
-        )
+        amount = st.number_input("Amount (USD)", min_value=0.01, step=0.01, format="%.2f")
+        category = category_input("Category", "new_expense_category")
         submitted = st.form_submit_button("Add expense")
 
     if not submitted:
@@ -189,7 +208,8 @@ def show_expense_form(token: str) -> None:
         st.error(exc.message)
         return
 
-    st.success("Expense added.")
+    st.session_state.expense_message = "Expense added."
+    st.rerun()
 
 
 def show_expense_actions(token: str, expenses: list[dict]) -> None:
@@ -203,10 +223,6 @@ def show_expense_actions(token: str, expenses: list[dict]) -> None:
     )
     selected = expenses_by_id[selected_id]
 
-    categories = EXPENSE_CATEGORIES.copy()
-    if selected["category"] not in categories:
-        categories.insert(0, selected["category"])
-
     with st.form(f"edit_expense_{selected_id}"):
         title = st.text_input("Title", value=selected["title"], key=f"edit_title_{selected_id}")
         description = st.text_input(
@@ -215,18 +231,17 @@ def show_expense_actions(token: str, expenses: list[dict]) -> None:
             key=f"edit_description_{selected_id}",
         )
         amount = st.number_input(
-            "Amount",
+            "Amount (USD)",
             min_value=0.01,
             value=float(selected["amount"]),
             step=0.01,
             format="%.2f",
             key=f"edit_amount_{selected_id}",
         )
-        category = st.selectbox(
+        category = category_input(
             "Category",
-            categories,
-            index=categories.index(selected["category"]),
-            key=f"edit_category_{selected_id}",
+            f"edit_category_{selected_id}",
+            current=selected["category"],
         )
         update_submitted = st.form_submit_button("Update expense")
 
@@ -270,6 +285,21 @@ def show_csv_import(token: str) -> None:
         "Required columns: date, title, amount. "
         "Optional columns: description, category, transaction_id."
     )
+
+    previous_result = st.session_state.import_result
+    if previous_result:
+        st.success("Expenses imported successfully.")
+        st.write(
+            f"Imported: {previous_result['imported']} | "
+            f"Duplicates skipped: {previous_result['duplicates']} | "
+            f"Failed: {previous_result['failed']}"
+        )
+        if previous_result["errors"]:
+            st.warning("Some rows could not be imported:")
+            for error in previous_result["errors"]:
+                st.write(f"Row {error['row']}: {error['message']}")
+        st.session_state.import_result = None
+
     uploaded_file = st.file_uploader(
         "Upload a CSV file",
         type=["csv"],
@@ -290,18 +320,8 @@ def show_csv_import(token: str) -> None:
         st.error(exc.message)
         return
 
-    data = result["data"]
-    st.success("Expenses imported successfully.")
-    st.write(
-        f"Imported: {data['imported']} | "
-        f"Duplicates skipped: {data['duplicates']} | "
-        f"Failed: {data['failed']}"
-    )
-
-    if data["errors"]:
-        st.warning("Some rows could not be imported:")
-        for error in data["errors"]:
-            st.write(f"Row {error['row']}: {error['message']}")
+    st.session_state.import_result = result["data"]
+    st.rerun()
 
 
 def show_spending_summary(expenses: list[dict]) -> None:
@@ -320,9 +340,9 @@ def show_spending_summary(expenses: list[dict]) -> None:
     average = total / count if count else 0
 
     total_column, count_column, average_column = st.columns(3)
-    total_column.metric("Total spending", f"{total:,.2f}")
+    total_column.metric("Total spending", f"${total:,.2f}")
     count_column.metric("Expenses", count)
-    average_column.metric("Average expense", f"{average:,.2f}")
+    average_column.metric("Average expense", f"${average:,.2f}")
 
     category_totals = (
         chart_data.groupby("category", as_index=False)["amount"]
@@ -339,42 +359,49 @@ def show_spending_summary(expenses: list[dict]) -> None:
         title="Spending by category",
     )
     category_chart.update_layout(showlegend=False)
+    category_chart.update_yaxes(tickprefix="$")
 
     dated_expenses = chart_data.dropna(subset=["created_at"]).copy()
     dated_expenses["month"] = dated_expenses["created_at"].dt.strftime("%Y-%m")
-    monthly_totals = dated_expenses.groupby("month", as_index=False)["amount"].sum()
+    current_year = date.today().year
+    year_months = pd.DataFrame(
+        {
+            "month": [f"{current_year}-{month:02d}" for month in range(1, 13)],
+            "month_label": [name[:3] for name in MONTH_NAMES],
+        }
+    )
+    monthly_totals = dated_expenses[
+        dated_expenses["created_at"].dt.year == current_year
+    ].groupby("month", as_index=False)["amount"].sum()
+    monthly_totals = year_months.merge(monthly_totals, on="month", how="left")
+    monthly_totals["amount"] = monthly_totals["amount"].fillna(0)
 
     monthly_chart = px.line(
         monthly_totals,
-        x="month",
+        x="month_label",
         y="amount",
         markers=True,
-        labels={"month": "Month", "amount": "Amount"},
-        title="Monthly spending",
+        labels={"month_label": "Month", "amount": "Amount"},
+        title=f"Monthly spending ({current_year})",
     )
+    monthly_chart.update_xaxes(
+        type="category",
+        categoryorder="array",
+        categoryarray=year_months["month_label"].tolist(),
+    )
+    monthly_chart.update_yaxes(tickprefix="$", rangemode="tozero")
 
     category_column, monthly_column = st.columns(2)
     category_column.plotly_chart(category_chart, width="stretch")
-    if monthly_totals.empty:
-        monthly_column.info("No dated expenses found.")
-    else:
-        monthly_column.plotly_chart(monthly_chart, width="stretch")
+    monthly_column.plotly_chart(monthly_chart, width="stretch")
 
 
-def show_expenses(token: str) -> None:
+def show_expenses(token: str, expenses: list[dict]) -> None:
     st.subheader("Your expenses")
-
-    try:
-        expenses = get_expenses(token)
-    except ApiClientError as exc:
-        st.error(exc.message)
-        return
 
     if not expenses:
         st.info("No expenses found.")
         return
-
-    show_spending_summary(expenses)
 
     table = pd.DataFrame(expenses)
     table = table[["title", "amount", "category", "description", "created_at"]]
@@ -391,7 +418,14 @@ def show_expenses(token: str) -> None:
             "created_at": "Date",
         }
     )
-    st.dataframe(table, hide_index=True, width="stretch")
+    st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Amount": st.column_config.NumberColumn(format="$%.2f"),
+        },
+    )
     show_expense_actions(token, expenses)
 
 
@@ -407,9 +441,9 @@ def show_budget_progress(budgets: list[dict]) -> None:
         with st.container(border=True):
             st.write(f"**{budget['category'].title()}**")
             limit_column, spent_column, remaining_column = st.columns(3)
-            limit_column.metric("Limit", f"{budget['limit_amount']:,.2f}")
-            spent_column.metric("Spent", f"{budget['spent']:,.2f}")
-            remaining_column.metric("Remaining", f"{budget['remaining']:,.2f}")
+            limit_column.metric("Limit", f"${budget['limit_amount']:,.2f}")
+            spent_column.metric("Spent", f"${budget['spent']:,.2f}")
+            remaining_column.metric("Remaining", f"${budget['remaining']:,.2f}")
             st.progress(progress_value, text=f"{percentage_used:.0f}% used")
 
             if budget["warning"]:
@@ -431,7 +465,7 @@ def show_budget_actions(token: str, budgets: list[dict]) -> None:
 
     with st.form(f"edit_budget_{selected_id}"):
         limit_amount = st.number_input(
-            "Budget limit",
+            "Budget limit (USD)",
             min_value=0.01,
             value=float(selected["limit_amount"]),
             step=1.0,
@@ -462,7 +496,91 @@ def show_budget_actions(token: str, budgets: list[dict]) -> None:
         st.rerun()
 
 
-def show_budgets(token: str) -> None:
+def create_budget_and_refresh(
+    token: str,
+    category: str,
+    selected_month: str,
+    limit_amount: float,
+) -> None:
+    try:
+        create_budget(token, category, selected_month, limit_amount)
+    except ApiClientError as exc:
+        st.error(exc.message)
+        return
+
+    st.session_state.budget_message = "Budget created."
+    st.rerun()
+
+
+def show_budget_summary(
+    token: str,
+    expenses: list[dict],
+    budgets: list[dict],
+    selected_month: str,
+) -> None:
+    budget_categories = {budget["category"] for budget in budgets}
+    monthly_expenses = [
+        expense
+        for expense in expenses
+        if str(expense["created_at"])[:7] == selected_month
+    ]
+    unallocated = [
+        expense
+        for expense in monthly_expenses
+        if expense["category"] not in budget_categories
+    ]
+
+    total_spending = sum(float(expense["amount"]) for expense in monthly_expenses)
+    unallocated_spending = sum(float(expense["amount"]) for expense in unallocated)
+
+    total_column, unallocated_column = st.columns(2)
+    total_column.metric("Total expenses", f"${total_spending:,.2f}")
+    unallocated_column.metric("Not allocated", f"${unallocated_spending:,.2f}")
+
+    if unallocated:
+        st.write("**Expenses without an allocated budget**")
+        table = pd.DataFrame(unallocated)[["title", "category", "amount"]]
+        table = table.rename(
+            columns={"title": "Title", "category": "Category", "amount": "Amount"}
+        )
+        st.dataframe(
+            table,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Amount": st.column_config.NumberColumn(format="$%.2f"),
+            },
+        )
+
+        unallocated_categories = sorted(
+            {expense["category"] for expense in unallocated}
+        )
+        with st.form(f"allocate_budget_{selected_month}"):
+            category = st.selectbox(
+                "Category to budget",
+                unallocated_categories,
+                format_func=str.title,
+            )
+            limit_amount = st.number_input(
+                "Budget limit (USD)",
+                min_value=0.01,
+                step=1.0,
+                format="%.2f",
+            )
+            allocate_submitted = st.form_submit_button("Add budget limit")
+
+        if allocate_submitted:
+            create_budget_and_refresh(
+                token,
+                category,
+                selected_month,
+                limit_amount,
+            )
+    elif monthly_expenses:
+        st.success("All expenses are covered by a budget.")
+
+
+def show_budgets(token: str, expenses: list[dict]) -> None:
     st.subheader("Monthly budgets")
 
     today = date.today()
@@ -488,9 +606,9 @@ def show_budgets(token: str) -> None:
         st.session_state.budget_message = None
 
     with st.form("create_budget_form", clear_on_submit=True):
-        category = st.selectbox("Budget category", EXPENSE_CATEGORIES)
+        category = category_input("Budget category", "new_budget_category")
         limit_amount = st.number_input(
-            "Limit amount",
+            "Limit amount (USD)",
             min_value=0.01,
             step=1.0,
             format="%.2f",
@@ -498,13 +616,7 @@ def show_budgets(token: str) -> None:
         create_submitted = st.form_submit_button("Create budget")
 
     if create_submitted:
-        try:
-            create_budget(token, category, selected_month, limit_amount)
-        except ApiClientError as exc:
-            st.error(exc.message)
-        else:
-            st.session_state.budget_message = "Budget created."
-            st.rerun()
+        create_budget_and_refresh(token, category, selected_month, limit_amount)
 
     try:
         budgets = get_budgets(token, selected_month)
@@ -512,12 +624,14 @@ def show_budgets(token: str) -> None:
         st.error(exc.message)
         return
 
+    show_budget_summary(token, expenses, budgets, selected_month)
     show_budget_progress(budgets)
     show_budget_actions(token, budgets)
 
 
 def show_authenticated_app() -> None:
     user = st.session_state.user
+    token = st.session_state.access_token
 
     with st.sidebar:
         st.subheader("SpendSense")
@@ -526,17 +640,37 @@ def show_authenticated_app() -> None:
             clear_session()
             st.session_state.authentication_message = "You have been logged out."
             st.rerun()
+        page = st.radio(
+            "Navigation",
+            ["Overview", "Expenses", "Budgets", "Import CSV"],
+        )
 
-    st.title("Expenses")
-    expense_message = st.session_state.expense_message
-    if expense_message:
-        st.success(expense_message)
-        st.session_state.expense_message = None
+    st.title("SpendSense")
+    if page == "Import CSV":
+        show_csv_import(token)
+        return
 
-    show_expense_form(st.session_state.access_token)
-    show_csv_import(st.session_state.access_token)
-    show_expenses(st.session_state.access_token)
-    show_budgets(st.session_state.access_token)
+    try:
+        expenses = get_expenses(token)
+    except ApiClientError as exc:
+        st.error(exc.message)
+        return
+
+    if page == "Overview":
+        if expenses:
+            show_spending_summary(expenses)
+        else:
+            st.info("No expenses found.")
+    elif page == "Expenses":
+        expense_message = st.session_state.expense_message
+        if expense_message:
+            st.success(expense_message)
+            st.session_state.expense_message = None
+
+        show_expense_form(token)
+        show_expenses(token, expenses)
+    elif page == "Budgets":
+        show_budgets(token, expenses)
 
 
 initialize_session()

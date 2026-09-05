@@ -14,14 +14,23 @@ def load_app():
 
 def test_login_stores_the_token_and_logout_clears_it(monkeypatch):
     user = {"id": 1, "username": "first-user", "email": "first@example.com"}
+    expense = {
+        "id": 1,
+        "user_id": 1,
+        "title": "Lunch",
+        "description": "Lunch with friends",
+        "amount": 12.5,
+        "category": "food",
+        "show": True,
+        "created_at": "2026-09-05T12:00:00",
+    }
     monkeypatch.setattr(
         api_client,
         "login_user",
         lambda email, password: {"access_token": "jwt-token", "user": user},
     )
     monkeypatch.setattr(api_client, "get_current_user", lambda token: user)
-    monkeypatch.setattr(api_client, "get_expenses", lambda token: [])
-    monkeypatch.setattr(api_client, "get_budgets", lambda token, month: [])
+    monkeypatch.setattr(api_client, "get_expenses", lambda token: [expense])
 
     app = load_app()
     app.text_input[0].input("first@example.com")
@@ -116,6 +125,7 @@ def test_duplicate_budget_error_does_not_hide_existing_budgets(monkeypatch):
     app.session_state["access_token"] = "jwt-token"
     app.session_state["user"] = user
     app.run(timeout=10)
+    app.radio[0].set_value("Budgets").run(timeout=10)
 
     create_button = next(button for button in app.button if button.label == "Create budget")
     create_button.click().run(timeout=10)
@@ -123,3 +133,63 @@ def test_duplicate_budget_error_does_not_hide_existing_budgets(monkeypatch):
     assert not list(app.exception)
     assert budget_requests == 2
     assert app.error[0].value == "Budget already exists for this category and month"
+
+
+def test_custom_expense_category_is_sent_to_the_api(monkeypatch):
+    user = {"id": 1, "username": "first-user", "email": "first@example.com"}
+    created = {}
+
+    def record_expense(token, title, description, amount, category):
+        created.update(
+            title=title,
+            description=description,
+            amount=amount,
+            category=category,
+        )
+        return {"status": "success"}
+
+    monkeypatch.setattr(api_client, "get_current_user", lambda token: user)
+    monkeypatch.setattr(api_client, "get_expenses", lambda token: [])
+    monkeypatch.setattr(api_client, "create_expense", record_expense)
+
+    app = AppTest.from_file(str(APP_FILE))
+    app.session_state["access_token"] = "jwt-token"
+    app.session_state["user"] = user
+    app.run(timeout=10)
+    app.radio[0].set_value("Expenses").run(timeout=10)
+
+    custom_category = next(
+        text_input
+        for text_input in app.text_input
+        if text_input.label == "Custom category (optional)"
+    )
+    custom_category.input("Education").run(timeout=10)
+    custom_category = next(
+        text_input
+        for text_input in app.text_input
+        if text_input.label == "Custom category (optional)"
+    )
+    assert custom_category.value == "Education"
+
+    title = next(text_input for text_input in app.text_input if text_input.label == "Title")
+    description = next(
+        text_input for text_input in app.text_input if text_input.label == "Description"
+    )
+    title.input("Course").run(timeout=10)
+    description = next(
+        text_input for text_input in app.text_input if text_input.label == "Description"
+    )
+    description.input("Online course").run(timeout=10)
+    custom_category = next(
+        text_input
+        for text_input in app.text_input
+        if text_input.label == "Custom category (optional)"
+    )
+    assert custom_category.value == "Education"
+
+    add_button = next(button for button in app.button if button.label == "Add expense")
+    add_button.click().run(timeout=10)
+
+    assert not list(app.exception)
+    assert created["category"] == "education"
+    assert app.radio[0].value == "Expenses"
