@@ -6,3 +6,7 @@ pydantic-settings
 alembic
 pytest
 python-multipart
+streamlit
+requests
+pandas
+plotly

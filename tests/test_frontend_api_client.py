@@ -1,0 +1,200 @@
+from frontend import api_client
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, body=None, content=b"response"):
+        self.status_code = status_code
+        self.body = body or {}
+        self.content = content
+        self.ok = 200 <= status_code < 400
+
+    def json(self):
+        return self.body
+
+
+def test_login_uses_the_auth_endpoint(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(
+            body={"access_token": "token", "user": {"id": 1, "username": "first-user"}}
+        )
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    response = api_client.login_user("first@example.com", "password123")
+
+    assert recorded["method"] == "POST"
+    assert recorded["url"] == f"{api_client.API_URL}/auth/"
+    assert recorded["kwargs"]["json"] == {
+        "email": "first@example.com",
+        "password": "password123",
+    }
+    assert response["access_token"] == "token"
+
+
+def test_registration_sends_the_expected_fields(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(status_code=201, body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.register_user("new-user", "new@example.com", "password123")
+
+    assert recorded["url"] == f"{api_client.API_URL}/users/"
+    assert recorded["kwargs"]["json"]["username"] == "new-user"
+
+
+def test_current_user_request_includes_the_bearer_token(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"data": {"user": {"id": 1, "username": "first-user"}}})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    user = api_client.get_current_user("jwt-token")
+
+    assert recorded["kwargs"]["headers"] == {"Authorization": "Bearer jwt-token"}
+    assert user["username"] == "first-user"
+
+
+def test_get_expenses_uses_the_expense_endpoint(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"data": {"expenses": [{"id": 1, "title": "Lunch"}]}})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    expenses = api_client.get_expenses("jwt-token")
+
+    assert recorded["method"] == "GET"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/"
+    assert expenses[0]["title"] == "Lunch"
+
+
+def test_create_expense_sends_the_form_values(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(status_code=201, body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.create_expense(
+        "jwt-token",
+        "Lunch",
+        "Lunch with friends",
+        12.50,
+        "food",
+    )
+
+    assert recorded["method"] == "POST"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/"
+    assert recorded["kwargs"]["json"] == {
+        "title": "Lunch",
+        "description": "Lunch with friends",
+        "amount": 12.50,
+        "category": "food",
+    }
+
+
+def test_update_expense_uses_the_selected_expense_id(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.update_expense(
+        "jwt-token",
+        12,
+        "Updated lunch",
+        "Lunch with friends",
+        15.00,
+        "food",
+        True,
+    )
+
+    assert recorded["method"] == "PUT"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/12"
+    assert recorded["kwargs"]["json"]["title"] == "Updated lunch"
+
+
+def test_delete_expense_uses_the_selected_expense_id(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.delete_expense("jwt-token", 12)
+
+    assert recorded["method"] == "DELETE"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/12"
+
+
+def test_csv_import_sends_the_uploaded_file(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(
+            body={"data": {"imported": 1, "duplicates": 0, "failed": 0, "errors": []}}
+        )
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.import_expenses("jwt-token", "expenses.csv", b"date,title,amount", "text/csv")
+
+    assert recorded["method"] == "POST"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/import/"
+    assert recorded["kwargs"]["files"]["file"][0] == "expenses.csv"
+
+
+def test_get_budgets_uses_the_selected_month(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"data": {"budgets": []}})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.get_budgets("jwt-token", "2026-09")
+
+    assert recorded["method"] == "GET"
+    assert recorded["url"] == f"{api_client.API_URL}/budgets/"
+    assert recorded["kwargs"]["params"] == {"month": "2026-09"}
+
+
+def test_create_budget_sends_the_form_values(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(status_code=201, body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.create_budget("jwt-token", "food", "2026-09", 200.00)
+
+    assert recorded["method"] == "POST"
+    assert recorded["url"] == f"{api_client.API_URL}/budgets/"
+    assert recorded["kwargs"]["json"] == {
+        "category": "food",
+        "month": "2026-09",
+        "limit_amount": 200.00,
+    }

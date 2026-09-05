@@ -1,8 +1,5 @@
 from datetime import datetime, timezone
 
-from app.models.expense import Expense
-
-
 def budget_body(category="food", month=None, limit_amount=100):
     return {
         "category": category,
