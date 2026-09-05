@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -16,7 +17,8 @@ auth_router = APIRouter(
 )
 @auth_router.post("/", response_model = LoginResponse)
 def login_user(login_request:LoginRequest, db:Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == login_request.email). first()
+    email = login_request.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user or not verify_password(user.password, login_request.password):
         raise HTTPException(
             status_code = 401,

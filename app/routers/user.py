@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -17,6 +18,7 @@ user_router = APIRouter(
 
 @user_router.post("/", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
 def create_user(user_request: UserRequestDto, db: Session = Depends(get_db)):
+    email = str(user_request.email).strip().lower()
     existing_username = db.query(User).filter(User.username == user_request.username).first()
     if existing_username:
         raise HTTPException(
@@ -24,7 +26,7 @@ def create_user(user_request: UserRequestDto, db: Session = Depends(get_db)):
             detail="Username already registered"
         )
 
-    existing_email = db.query(User).filter(User.email == user_request.email).first()
+    existing_email = db.query(User).filter(func.lower(User.email) == email).first()
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -35,7 +37,7 @@ def create_user(user_request: UserRequestDto, db: Session = Depends(get_db)):
 
     new_user = User(
         username=user_request.username,
-        email=user_request.email,
+        email=email,
         password=hashed_pwd
     )
     db.add(new_user)
@@ -74,14 +76,16 @@ def update_current_user(user_update: UserUpdateDto, db: Session = Depends(get_db
             )
         user.username = user_update.username
 
-    if user_update.email and user_update.email != user.email:
-        conflict = db.query(User).filter(User.email == user_update.email).first()
-        if conflict:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already taken"
-            )
-        user.email = user_update.email
+    if user_update.email:
+        email = str(user_update.email).strip().lower()
+        if email != user.email.lower():
+            conflict = db.query(User).filter(func.lower(User.email) == email).first()
+            if conflict:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already taken"
+                )
+        user.email = email
 
     if user_update.password:
         user.password = hash_password(user_update.password)

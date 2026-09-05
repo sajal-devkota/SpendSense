@@ -6,7 +6,7 @@ def test_new_user_can_register(client):
         "/users/",
         json={
             "username": "new-user",
-            "email": "new@example.com",
+            "email": "New@Example.COM",
             "password": TEST_PASSWORD,
         },
     )
@@ -20,7 +20,7 @@ def test_duplicate_email_is_rejected(client):
         "/users/",
         json={
             "username": "different-name",
-            "email": "first@example.com",
+            "email": "FIRST@EXAMPLE.COM",
             "password": TEST_PASSWORD,
         },
     )
@@ -31,7 +31,7 @@ def test_duplicate_email_is_rejected(client):
 def test_login_returns_an_access_token(client):
     response = client.post(
         "/auth/",
-        json={"email": "first@example.com", "password": TEST_PASSWORD},
+        json={"email": "FIRST@EXAMPLE.COM", "password": TEST_PASSWORD},
     )
 
     assert response.status_code == 200
@@ -70,11 +70,12 @@ def test_user_can_update_their_own_profile(client, first_user_headers):
     response = client.put(
         "/users/me",
         headers=first_user_headers,
-        json={"username": "updated-user"},
+        json={"username": "updated-user", "email": "Updated@Example.COM"},
     )
 
     assert response.status_code == 200
     assert response.json()["data"]["user"]["username"] == "updated-user"
+    assert response.json()["data"]["user"]["email"] == "updated@example.com"
 
 
 def test_deleting_account_invalidates_its_token(client, first_user_headers):
