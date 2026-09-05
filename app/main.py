@@ -16,6 +16,6 @@ app.include_router(budget_router)
 @app.get("/")
 def root():
     return{
-        "message": "hello"
+        "message": "SpendSense API is running"
     }
 

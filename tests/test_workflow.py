@@ -1,4 +1,8 @@
 def test_main_api_workflow(client):
+    root = client.get("/")
+    assert root.status_code == 200
+    assert root.json()["message"] == "SpendSense API is running"
+
     registered = client.post(
         "/users/",
         json={
