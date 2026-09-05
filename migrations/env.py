@@ -6,12 +6,11 @@ from sqlalchemy import engine_from_config, pool
 import app.models.expense
 import app.models.user
 import app.models.budget
-from app.core.config import settings
-from app.core.db import Base
+from app.core.db import Base, DATABASE_URL
 
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
