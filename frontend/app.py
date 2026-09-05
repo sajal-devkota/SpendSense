@@ -3,6 +3,7 @@ import streamlit as st
 
 from frontend.api_client import (
     ApiClientError,
+    create_expense,
     get_current_user,
     get_expenses,
     import_expenses,
@@ -119,6 +120,41 @@ def validate_session() -> bool:
         st.stop()
 
 
+def show_expense_form(token: str) -> None:
+    st.subheader("Add expense")
+
+    with st.form("expense_form", clear_on_submit=True):
+        title = st.text_input("Title")
+        description = st.text_input("Description")
+        amount = st.number_input("Amount", min_value=0.01, step=0.01, format="%.2f")
+        category = st.selectbox(
+            "Category",
+            ["food", "transport", "housing", "entertainment", "shopping", "health", "other"],
+        )
+        submitted = st.form_submit_button("Add expense")
+
+    if not submitted:
+        return
+
+    if not title.strip() or not description.strip():
+        st.error("Title and description are required.")
+        return
+
+    try:
+        create_expense(
+            token,
+            title.strip(),
+            description.strip(),
+            amount,
+            category,
+        )
+    except ApiClientError as exc:
+        st.error(exc.message)
+        return
+
+    st.success("Expense added.")
+
+
 def show_csv_import(token: str) -> None:
     st.subheader("Import expenses")
     st.caption(
@@ -174,7 +210,10 @@ def show_expenses(token: str) -> None:
 
     table = pd.DataFrame(expenses)
     table = table[["title", "amount", "category", "description", "created_at"]]
-    table["created_at"] = pd.to_datetime(table["created_at"]).dt.strftime("%Y-%m-%d")
+    table["created_at"] = pd.to_datetime(
+        table["created_at"],
+        format="ISO8601",
+    ).dt.strftime("%Y-%m-%d")
     table = table.rename(
         columns={
             "title": "Title",
@@ -199,6 +238,7 @@ def show_authenticated_app() -> None:
             st.rerun()
 
     st.title("Expenses")
+    show_expense_form(st.session_state.access_token)
     show_csv_import(st.session_state.access_token)
     show_expenses(st.session_state.access_token)
 

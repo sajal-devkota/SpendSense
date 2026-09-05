@@ -122,6 +122,26 @@ def get_expenses(token: str) -> list[dict[str, Any]]:
     return response["data"]["expenses"]
 
 
+def create_expense(
+    token: str,
+    title: str,
+    description: str,
+    amount: float,
+    category: str,
+) -> dict[str, Any]:
+    return request(
+        "POST",
+        "/expenses/",
+        token=token,
+        json={
+            "title": title,
+            "description": description,
+            "amount": amount,
+            "category": category,
+        },
+    )
+
+
 def import_expenses(
     token: str,
     filename: str,

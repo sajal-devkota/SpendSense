@@ -80,6 +80,33 @@ def test_get_expenses_uses_the_expense_endpoint(monkeypatch):
     assert expenses[0]["title"] == "Lunch"
 
 
+def test_create_expense_sends_the_form_values(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(status_code=201, body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.create_expense(
+        "jwt-token",
+        "Lunch",
+        "Lunch with friends",
+        12.50,
+        "food",
+    )
+
+    assert recorded["method"] == "POST"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/"
+    assert recorded["kwargs"]["json"] == {
+        "title": "Lunch",
+        "description": "Lunch with friends",
+        "amount": 12.50,
+        "category": "food",
+    }
+
+
 def test_csv_import_sends_the_uploaded_file(monkeypatch):
     recorded = {}
 
