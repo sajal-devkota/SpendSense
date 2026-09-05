@@ -8,3 +8,4 @@ pytest
 python-multipart
 streamlit
 requests
+pandas

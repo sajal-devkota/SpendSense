@@ -63,3 +63,37 @@ def test_current_user_request_includes_the_bearer_token(monkeypatch):
     assert recorded["kwargs"]["headers"] == {"Authorization": "Bearer jwt-token"}
     assert user["username"] == "first-user"
 
+
+def test_get_expenses_uses_the_expense_endpoint(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"data": {"expenses": [{"id": 1, "title": "Lunch"}]}})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    expenses = api_client.get_expenses("jwt-token")
+
+    assert recorded["method"] == "GET"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/"
+    assert expenses[0]["title"] == "Lunch"
+
+
+def test_csv_import_sends_the_uploaded_file(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(
+            body={"data": {"imported": 1, "duplicates": 0, "failed": 0, "errors": []}}
+        )
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.import_expenses("jwt-token", "expenses.csv", b"date,title,amount", "text/csv")
+
+    assert recorded["method"] == "POST"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/import/"
+    assert recorded["kwargs"]["files"]["file"][0] == "expenses.csv"
+

@@ -1,11 +1,18 @@
+import pandas as pd
 import streamlit as st
 
-from frontend.api_client import ApiClientError, get_current_user, login_user, register_user
+from frontend.api_client import (
+    ApiClientError,
+    get_current_user,
+    get_expenses,
+    import_expenses,
+    login_user,
+    register_user,
+)
 
 
 st.set_page_config(
     page_title="SpendSense",
-    page_icon="💰",
     layout="wide",
 )
 
@@ -27,7 +34,7 @@ def show_login() -> None:
     with st.form("login_form"):
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Password", type="password", key="login_password")
-        submitted = st.form_submit_button("Log in", use_container_width=True)
+        submitted = st.form_submit_button("Log in", width="stretch")
 
     if not submitted:
         return
@@ -60,7 +67,7 @@ def show_registration() -> None:
             type="password",
             key="registration_confirmation",
         )
-        submitted = st.form_submit_button("Create account", use_container_width=True)
+        submitted = st.form_submit_button("Create account", width="stretch")
 
     if not submitted:
         return
@@ -112,19 +119,88 @@ def validate_session() -> bool:
         st.stop()
 
 
+def show_csv_import(token: str) -> None:
+    st.subheader("Import expenses")
+    st.caption(
+        "Required columns: date, title, amount. "
+        "Optional columns: description, category, transaction_id."
+    )
+    uploaded_file = st.file_uploader(
+        "Upload a CSV file",
+        type=["csv"],
+        max_upload_size=2,
+    )
+
+    if not st.button("Import", disabled=uploaded_file is None):
+        return
+
+    try:
+        result = import_expenses(
+            token,
+            uploaded_file.name,
+            uploaded_file.getvalue(),
+            uploaded_file.type or "text/csv",
+        )
+    except ApiClientError as exc:
+        st.error(exc.message)
+        return
+
+    data = result["data"]
+    st.success("Expenses imported successfully.")
+    st.write(
+        f"Imported: {data['imported']} | "
+        f"Duplicates skipped: {data['duplicates']} | "
+        f"Failed: {data['failed']}"
+    )
+
+    if data["errors"]:
+        st.warning("Some rows could not be imported:")
+        for error in data["errors"]:
+            st.write(f"Row {error['row']}: {error['message']}")
+
+
+def show_expenses(token: str) -> None:
+    st.subheader("Your expenses")
+
+    try:
+        expenses = get_expenses(token)
+    except ApiClientError as exc:
+        st.error(exc.message)
+        return
+
+    if not expenses:
+        st.info("No expenses found.")
+        return
+
+    table = pd.DataFrame(expenses)
+    table = table[["title", "amount", "category", "description", "created_at"]]
+    table["created_at"] = pd.to_datetime(table["created_at"]).dt.strftime("%Y-%m-%d")
+    table = table.rename(
+        columns={
+            "title": "Title",
+            "amount": "Amount",
+            "category": "Category",
+            "description": "Description",
+            "created_at": "Date",
+        }
+    )
+    st.dataframe(table, hide_index=True, width="stretch")
+
+
 def show_authenticated_app() -> None:
     user = st.session_state.user
 
     with st.sidebar:
         st.subheader("SpendSense")
         st.write(f"Signed in as **{user['username']}**")
-        if st.button("Log out", use_container_width=True):
+        if st.button("Log out", width="stretch"):
             clear_session()
             st.session_state.authentication_message = "You have been logged out."
             st.rerun()
 
-    st.title(f"Welcome, {user['username']}")
-    st.write("Your expense dashboard will be added here next.")
+    st.title("Expenses")
+    show_csv_import(st.session_state.access_token)
+    show_expenses(st.session_state.access_token)
 
 
 initialize_session()

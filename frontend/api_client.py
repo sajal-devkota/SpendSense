@@ -115,3 +115,22 @@ def login_user(email: str, password: str) -> dict[str, Any]:
 def get_current_user(token: str) -> dict[str, Any]:
     response = request("GET", "/users/me", token=token)
     return response["data"]["user"]
+
+
+def get_expenses(token: str) -> list[dict[str, Any]]:
+    response = request("GET", "/expenses/", token=token)
+    return response["data"]["expenses"]
+
+
+def import_expenses(
+    token: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> dict[str, Any]:
+    return request(
+        "POST",
+        "/expenses/import/",
+        token=token,
+        files={"file": (filename, content, content_type)},
+    )

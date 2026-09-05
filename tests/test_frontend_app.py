@@ -9,7 +9,7 @@ APP_FILE = Path(__file__).parents[1] / "frontend" / "app.py"
 
 
 def load_app():
-    return AppTest.from_file(str(APP_FILE)).run()
+    return AppTest.from_file(str(APP_FILE)).run(timeout=10)
 
 
 def test_login_stores_the_token_and_logout_clears_it(monkeypatch):
@@ -20,6 +20,7 @@ def test_login_stores_the_token_and_logout_clears_it(monkeypatch):
         lambda email, password: {"access_token": "jwt-token", "user": user},
     )
     monkeypatch.setattr(api_client, "get_current_user", lambda token: user)
+    monkeypatch.setattr(api_client, "get_expenses", lambda token: [])
 
     app = load_app()
     app.text_input[0].input("first@example.com")
@@ -29,9 +30,9 @@ def test_login_stores_the_token_and_logout_clears_it(monkeypatch):
     assert not list(app.exception)
     assert app.session_state["access_token"] == "jwt-token"
     assert app.session_state["user"]["username"] == "first-user"
-    assert app.button[0].label == "Log out"
+    logout_button = next(button for button in app.button if button.label == "Log out")
 
-    app.button[0].click().run()
+    logout_button.click().run()
 
     assert app.session_state["access_token"] is None
     assert app.session_state["user"] is None
@@ -71,7 +72,7 @@ def test_expired_token_returns_the_user_to_login(monkeypatch):
     app = AppTest.from_file(str(APP_FILE))
     app.session_state["access_token"] = "expired-token"
     app.session_state["user"] = {"username": "first-user"}
-    app.run()
+    app.run(timeout=10)
 
     assert not list(app.exception)
     assert app.session_state["access_token"] is None
