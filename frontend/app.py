@@ -4,12 +4,25 @@ import streamlit as st
 from frontend.api_client import (
     ApiClientError,
     create_expense,
+    delete_expense,
     get_current_user,
     get_expenses,
     import_expenses,
     login_user,
     register_user,
+    update_expense,
 )
+
+
+EXPENSE_CATEGORIES = [
+    "food",
+    "transport",
+    "housing",
+    "entertainment",
+    "shopping",
+    "health",
+    "other",
+]
 
 
 st.set_page_config(
@@ -22,6 +35,7 @@ def initialize_session() -> None:
     st.session_state.setdefault("access_token", None)
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("authentication_message", None)
+    st.session_state.setdefault("expense_message", None)
 
 
 def clear_session() -> None:
@@ -129,7 +143,7 @@ def show_expense_form(token: str) -> None:
         amount = st.number_input("Amount", min_value=0.01, step=0.01, format="%.2f")
         category = st.selectbox(
             "Category",
-            ["food", "transport", "housing", "entertainment", "shopping", "health", "other"],
+            EXPENSE_CATEGORIES,
         )
         submitted = st.form_submit_button("Add expense")
 
@@ -153,6 +167,78 @@ def show_expense_form(token: str) -> None:
         return
 
     st.success("Expense added.")
+
+
+def show_expense_actions(token: str, expenses: list[dict]) -> None:
+    st.subheader("Edit or delete expense")
+
+    expenses_by_id = {expense["id"]: expense for expense in expenses}
+    selected_id = st.selectbox(
+        "Select an expense",
+        list(expenses_by_id),
+        format_func=lambda expense_id: expenses_by_id[expense_id]["title"],
+    )
+    selected = expenses_by_id[selected_id]
+
+    categories = EXPENSE_CATEGORIES.copy()
+    if selected["category"] not in categories:
+        categories.insert(0, selected["category"])
+
+    with st.form(f"edit_expense_{selected_id}"):
+        title = st.text_input("Title", value=selected["title"], key=f"edit_title_{selected_id}")
+        description = st.text_input(
+            "Description",
+            value=selected["description"],
+            key=f"edit_description_{selected_id}",
+        )
+        amount = st.number_input(
+            "Amount",
+            min_value=0.01,
+            value=float(selected["amount"]),
+            step=0.01,
+            format="%.2f",
+            key=f"edit_amount_{selected_id}",
+        )
+        category = st.selectbox(
+            "Category",
+            categories,
+            index=categories.index(selected["category"]),
+            key=f"edit_category_{selected_id}",
+        )
+        update_submitted = st.form_submit_button("Update expense")
+
+    if update_submitted:
+        if not title.strip() or not description.strip():
+            st.error("Title and description are required.")
+            return
+
+        try:
+            update_expense(
+                token,
+                selected_id,
+                title.strip(),
+                description.strip(),
+                amount,
+                category,
+                selected["show"],
+            )
+        except ApiClientError as exc:
+            st.error(exc.message)
+            return
+
+        st.session_state.expense_message = "Expense updated."
+        st.rerun()
+
+    st.warning("Deleting an expense cannot be undone.")
+    if st.button("Delete expense", key=f"delete_expense_{selected_id}"):
+        try:
+            delete_expense(token, selected_id)
+        except ApiClientError as exc:
+            st.error(exc.message)
+            return
+
+        st.session_state.expense_message = "Expense deleted."
+        st.rerun()
 
 
 def show_csv_import(token: str) -> None:
@@ -224,6 +310,7 @@ def show_expenses(token: str) -> None:
         }
     )
     st.dataframe(table, hide_index=True, width="stretch")
+    show_expense_actions(token, expenses)
 
 
 def show_authenticated_app() -> None:
@@ -238,6 +325,11 @@ def show_authenticated_app() -> None:
             st.rerun()
 
     st.title("Expenses")
+    expense_message = st.session_state.expense_message
+    if expense_message:
+        st.success(expense_message)
+        st.session_state.expense_message = None
+
     show_expense_form(st.session_state.access_token)
     show_csv_import(st.session_state.access_token)
     show_expenses(st.session_state.access_token)

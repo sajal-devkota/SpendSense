@@ -107,6 +107,45 @@ def test_create_expense_sends_the_form_values(monkeypatch):
     }
 
 
+def test_update_expense_uses_the_selected_expense_id(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.update_expense(
+        "jwt-token",
+        12,
+        "Updated lunch",
+        "Lunch with friends",
+        15.00,
+        "food",
+        True,
+    )
+
+    assert recorded["method"] == "PUT"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/12"
+    assert recorded["kwargs"]["json"]["title"] == "Updated lunch"
+
+
+def test_delete_expense_uses_the_selected_expense_id(monkeypatch):
+    recorded = {}
+
+    def fake_request(method, url, **kwargs):
+        recorded.update(method=method, url=url, kwargs=kwargs)
+        return FakeResponse(body={"status": "success"})
+
+    monkeypatch.setattr(api_client.requests, "request", fake_request)
+
+    api_client.delete_expense("jwt-token", 12)
+
+    assert recorded["method"] == "DELETE"
+    assert recorded["url"] == f"{api_client.API_URL}/expenses/12"
+
+
 def test_csv_import_sends_the_uploaded_file(monkeypatch):
     recorded = {}
 

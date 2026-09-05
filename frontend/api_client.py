@@ -142,6 +142,33 @@ def create_expense(
     )
 
 
+def update_expense(
+    token: str,
+    expense_id: int,
+    title: str,
+    description: str,
+    amount: float,
+    category: str,
+    show: bool,
+) -> dict[str, Any]:
+    return request(
+        "PUT",
+        f"/expenses/{expense_id}",
+        token=token,
+        json={
+            "title": title,
+            "description": description,
+            "amount": amount,
+            "category": category,
+            "show": show,
+        },
+    )
+
+
+def delete_expense(token: str, expense_id: int) -> dict[str, Any]:
+    return request("DELETE", f"/expenses/{expense_id}", token=token)
+
+
 def import_expenses(
     token: str,
     filename: str,
