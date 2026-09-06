@@ -672,15 +672,20 @@ def show_authenticated_app() -> None:
         show_budgets(token, expenses)
 
 
-initialize_session()
+def main() -> None:
+    initialize_session()
 
-authenticated = validate_session()
-message = st.session_state.authentication_message
-if message:
-    st.info(message)
-    st.session_state.authentication_message = None
+    authenticated = validate_session()
+    message = st.session_state.authentication_message
+    if message:
+        st.info(message)
+        st.session_state.authentication_message = None
 
-if authenticated:
-    show_authenticated_app()
-else:
-    show_authentication()
+    if authenticated:
+        show_authenticated_app()
+    else:
+        show_authentication()
+
+
+if __name__ == "__main__":
+    main()
