@@ -4,6 +4,8 @@ SpendSense is a personal finance app for recording expenses, setting monthly cat
 
 [Open the live app](https://spendsense-finance.streamlit.app) · [View the API documentation](https://spendsense.fastapicloud.dev/docs)
 
+![SpendSense spending overview](docs/assets/spendsense-dashboard.png)
+
 ## Features
 
 - Create an account and log in securely
