@@ -20,6 +20,12 @@ def auth_headers(token: str) -> dict[str, str]:
 
 
 def _error_message(response: requests.Response) -> str:
+    if response.status_code >= 500:
+        return (
+            "SpendSense could not complete the request because the server or "
+            "database is temporarily unavailable. Please try again shortly."
+        )
+
     try:
         body = response.json()
     except ValueError:
@@ -66,7 +72,7 @@ def request(
         raise ApiClientError("The request timed out. Please try again.") from exc
     except requests.ConnectionError as exc:
         raise ApiClientError(
-            "Could not connect to the SpendSense API. Make sure FastAPI is running."
+            "The SpendSense service is temporarily unavailable. Please try again shortly."
         ) from exc
     except requests.RequestException as exc:
         raise ApiClientError("The API request failed. Please try again.") from exc
